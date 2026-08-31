@@ -10,7 +10,10 @@ A battle-tested field guide for running **Qwen3.8-Flash-Next-NVFP4** across **tw
 
 ## Files
 
-- `README.md` — this guide (full English version)
+- `DEPLOYMENT_GUIDE.md` — full Qwen3.8 Flash-Next TP2 deployment guide (scripts included)
+- `DEEPSEEK_TP2_NOTES.md` — DeepSeek-V4-Flash TP2 experience + crash postmortems (0.78 KV allocation failure, cron overload chain), per-model concurrency data
+- `scripts/qwen38_tp2_rank0_start.sh` — rank0 (head) startup script
+- `scripts/qwen38_tp2_rank1_start.sh` — rank1 (worker, `--headless`) startup script
 
 ## Reproduce
 
