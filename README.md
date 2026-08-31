@@ -1,24 +1,33 @@
-# Dual DGX Spark (GX10) Qwen3.8 Flash-Next TP2 Deployment Guide
+# Dual DGX Spark (GB10/GX10) — Local TP2 Serving Guides
 
-A battle-tested field guide for running **Qwen3.8-Flash-Next-NVFP4** across **two NVIDIA DGX Spark (GB10/GX10) nodes** with vLLM TP=2 multi-node serving — including why we left DeepSeek-V4-Flash (unified-memory pressure), measured memory numbers, the 5 TP2 traps, and 3 memory traps.
+Battle-tested deployment guides for running TP=2 multi-node inference across **two NVIDIA
+DGX Spark** nodes (200 GbE interconnect), with measured memory numbers and real crash
+postmortems. All data from production logs, `docker inspect`, and vLLM `/metrics`.
 
-## Highlights
+## 📄 Guides
 
-- **Why**: DeepSeek-V4-Flash TP2 on DGX Spark leaves only ~1 GB free (weights 79.17 GiB); gpu-memory-utilization **0.78 fails to boot**, only **0.82** works. Qwen3.8 Flash-Next (3B-active MoE, 61.73 GiB) runs at **0.85 stable**, raising concurrency from **seqs 8 → 32** on the same hardware.
-- **Measured numbers**: KV cache 2.78M tokens, theoretical concurrency 42.4, short-request latency ~0.5 s.
-- **Pitfalls covered**: NCCL NIC selection, fp8 KV cache, PLE layer patches, `--headless` on rank1, head-first start order, gpu-memory-utilization sensitivity, UMA OOM, per-model concurrency tuning, safe restarts.
+| Guide | Covers |
+|---|---|
+| [`DEPLOYMENT_GUIDE.md`](DEPLOYMENT_GUIDE.md) | **Qwen3.8-Flash-Next-NVFP4** TP2 (the one we run in production: util 0.85, seqs 8→32, KV max_concurrency 42.4, 5 TP2 traps, startup timing) |
+| [`DEEPSEEK_TP2_GUIDE.md`](DEEPSEEK_TP2_GUIDE.md) | **DeepSeek-V4-Flash-DSpark** TP2 (util 0.82 only — 0.78/0.70 crash postmortems, dspark-vllm-gx10 head.env, cron-storm overload chain, ops notes) |
 
-## Files
+## Scripts
 
-- `DEPLOYMENT_GUIDE.md` — full Qwen3.8 Flash-Next TP2 deployment guide (scripts included)
-- `DEEPSEEK_TP2_NOTES.md` — DeepSeek-V4-Flash TP2 experience + crash postmortems (0.78 KV allocation failure, cron overload chain), per-model concurrency data
-- `scripts/qwen38_tp2_rank0_start.sh` — rank0 (head) startup script
-- `scripts/qwen38_tp2_rank1_start.sh` — rank1 (worker, `--headless`) startup script
+- `scripts/qwen38_tp2_rank0_start.sh` — Qwen3.8 rank0 (head)
+- `scripts/qwen38_tp2_rank1_start.sh` — Qwen3.8 rank1 (worker, `--headless`)
 
-## Reproduce
+## TL;DR
 
-Two DGX Sparks linked by 200GbE, each with a local copy of `/data/models/Qwen3.8-Flash-Next-NVFP4`, dedicated image `vllm/vllm-openai:qwen38-flash-next`, PLE patches bind-mounted, head on Spark1 (rank0) then worker on Spark2 (rank1 with `--headless`). Full scripts in the guide.
+- **Qwen3.8 Flash-Next**: 61.73 GiB/rank NVFP4 → `gpu-memory-utilization 0.85`, seqs **32**,
+  KV max_concurrency **42.4**, short-request latency ~0.5 s. Dedicated dev image
+  `vllm/vllm-openai:qwen38-flash-next` (not PyPI), PLE patches, rank1 `--headless`.
+- **DeepSeek-V4-Flash**: 79.17 GiB/rank → **0.82 is the only working util** (0.78 = KV alloc
+  failure: 6.92 < 7.8 GiB; 0.70 = weights don't fit). seqs 8, max-model-len 262144,
+  batched 16384, MTP 5, API served by rank0 only.
+- **Both**: NCCL must use the 200G NIC; head before worker; cold boot >10 min (weight load
+  ~397 s + AOT/JIT compile 5–10 min); per-model `max-num-batched-tokens` (dense 8192 /
+  MoE 16384); cap parallel cron jobs to avoid stampede.
 
 ---
 
-*Measured 2026-08-31 on three machines (Spark1 .59 / Spark2 .226 / Spark3 .209). All numbers from real deployment logs and vLLM /metrics.*
+*Measured 2026-08-31 on Spark1 (.59) + Spark2 (.226) + Spark3 (.209).*
